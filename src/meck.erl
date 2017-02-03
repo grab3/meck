@@ -46,6 +46,7 @@
 -export([called/4]).
 -export([num_calls/3]).
 -export([num_calls/4]).
+-export([reset/0]).
 -export([reset/1]).
 -export([capture/5]).
 -export([capture/6]).
@@ -535,6 +536,10 @@ reset(Mod) when is_atom(Mod) ->
 reset(Mods) when is_list(Mods) ->
     lists:foreach(fun(Mod) -> reset(Mod) end, Mods).
 
+-spec reset() -> ok.
+reset() ->
+    lists:foldl(fun reset_if_mocked/2, [], registered()).
+
 %% @doc Converts a list of terms into {@link ret_spec()} defining a loop of
 %% values. It is intended to be in construction of clause specs for the
 %% {@link expect/3} function.
@@ -679,8 +684,31 @@ unload_if_mocked(ModName, Unloaded) when length(ModName) > 5 ->
         _Else ->
             Unloaded
     end;
+
 unload_if_mocked(_P, Unloaded) ->
     Unloaded.
+
+-spec reset_if_mocked(Mod::atom() | string(), Unloaded::[atom()]) ->
+    NewUnloaded::[atom()].
+reset_if_mocked(Mod, Unloaded) when is_atom(Mod) ->
+    reset_if_mocked(atom_to_list(Mod), Unloaded);
+reset_if_mocked(ModName, Unloaded) when length(ModName) > 5 ->
+    case lists:split(length(ModName) - 5, ModName) of
+        {Name, "_meck"} ->
+            Mocked = erlang:list_to_existing_atom(Name),
+            try
+                reset(Mocked)
+            catch error:{not_mocked, Mocked} ->
+                ok
+            end,
+            [Mocked | Unloaded];
+        _Else ->
+            Unloaded
+    end;
+
+reset_if_mocked(_P, Unloaded) ->
+    Unloaded.
+
 
 -spec check_expect_result(ok | {error, Reason::any()}) -> ok.
 check_expect_result(ok) -> ok;
